@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>レトロテニス</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        #gameTitle {
+            font-size: 24px;
+            margin-bottom: 10px;
+            text-align: center;
+            color: #ffeb3b;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4);
+            background-size: 400% 400%;
+            animation: rainbow 3s ease infinite;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        @keyframes rainbow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        #scoreBoard {
+            font-size: 16px;
+            margin-bottom: 20px;
+            text-align: center;
+            line-height: 1.5;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 15px;
+            border: 2px solid #4ecdc4;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        
+        .score-section {
+            margin: 5px 0;
+            color: #e8f5e8;
+        }
+        
+        #games1, #games2 {
+            color: #ff6b6b;
+            font-weight: bold;
+            font-size: 20px;
+        }
+        
+        #points1, #points2 {
+            color: #4ecdc4;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        #status {
+            color: #ffeb3b !important;
+            font-weight: bold;
+            margin-top: 5px !important;
+        }
+        
+        #gameCanvas {
+            border: 3px solid #ff6b6b;
+            background: linear-gradient(45deg, #0f3460, #16537e);
+            border-radius: 10px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+        }
+        
+        #controls {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #96ceb4;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: 1px solid #45b7d1;
+        }
+        
+        .blink {
+            animation: colorBlink 1.5s infinite;
+        }
+        
+        @keyframes colorBlink {
+            0%, 100% { color: #ffeb3b; }
+            25% { color: #ff6b6b; }
+            50% { color: #4ecdc4; }
+            75% { color: #45b7d1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameTitle">★ RETRO TENNIS ★</div>
+    <div id="scoreBoard">
+        <div class="score-section">ゲーム: プレイヤー <span id="games1">0</span> - <span id="games2">0</span> コンピューター</div>
+        <div class="score-section">ポイント: プレイヤー <span id="points1">0</span> - <span id="points2">0</span> コンピューター</div>
+        <div class="score-section" id="status"></div>
+    </div>
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+    <div id="controls">
+        プレイヤー: W/S キー (サーブ時位置調整も可能)<br>
+        <span class="blink">SPACE キーでスタート/サーブ</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // ゲーム状態
+        let gameState = 'waiting'; // 'waiting', 'serving', 'playing', 'paused', 'gameWon', 'matchWon'
+        
+        // テニススコア
+        let tennisScore = {
+            games: [0, 0], // セットは削除、ゲーム数のみ
+            points: [0, 0],
+            isDeuce: false,
+            advantage: -1, // -1: なし, 0: プレイヤー1, 1: プレイヤー2
+            currentServer: 0, // 0: プレイヤー1, 1: プレイヤー2
+            isMatchWon: false,
+            winner: -1
+        };
+        
+        // パドル設定
+        const paddleWidth = 10;
+        const paddleHeight = 60;
+        const paddleSpeed = 5;
+        
+        // プレイヤー1（左・人間）
+        let player1 = {
+            x: 20,
+            y: canvas.height / 2 - paddleHeight / 2,
+            dy: 0,
+            prevY: canvas.height / 2 - paddleHeight / 2,
+            velocity: 0
+        };
+        
+        // プレイヤー2（右・コンピューター）
+        let player2 = {
+            x: canvas.width - 30,
+            y: canvas.height / 2 - paddleHeight / 2,
+            dy: 0,
+            targetY: canvas.height / 2 - paddleHeight / 2,
+            difficulty: 0.8, // 0.0-1.0, 高いほど強い
+            prevY: canvas.height / 2 - paddleHeight / 2,
+            velocity: 0,
+            reactionDelay: 0, // 反応遅延フレーム数
+            predictionError: 0 // 予測誤差
+        };
+        
+        // ボール設定
+        let ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            dx: 3,
+            dy: 2,
+            size: 8,
+            hitCount: 0, // ラリー回数をカウント
+            scored: false // ポイント済みフラグ
+        };
+        
+        // キー入力管理
+        const keys = {};
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            
+            if (e.key === ' ') {
+                if (gameState === 'waiting') {
+                    startServing();
+                } else if (gameState === 'serving') {
+                    serveGame();
+                } else if (gameState === 'gameWon') {
+                    nextGame();
+                } else if (gameState === 'matchWon') {
+                    resetMatch();
+                }
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+        
+        function getPointDisplay(points, isDeuce, advantage, playerIndex) {
+            if (isDeuce) {
+                if (advantage === -1) return "40";
+                if (advantage === playerIndex) return "Ad";
+                return "40";
+            }
+            
+            // テニスポイント表示: 0, 15, 30, 40
+            const pointNames = ["0", "15", "30", "40"];
+            return pointNames[Math.min(points, 3)];
+        }
+        
+        function updateScoreDisplay() {
+            document.getElementById('games1').textContent = tennisScore.games[0];
+            document.getElementById('games2').textContent = tennisScore.games[1];
+            
+            // ポイント表示の処理
+            document.getElementById('points1').textContent = getPointDisplay(
+                tennisScore.points[0], tennisScore.isDeuce, tennisScore.advantage, 0
+            );
+            document.getElementById('points2').textContent = getPointDisplay(
+                tennisScore.points[1], tennisScore.isDeuce, tennisScore.advantage, 1
+            );
+            
+            let status = "";
+            
+            // デュース・アドバンテージの状態表示
+            if (tennisScore.isDeuce) {
+                if (tennisScore.advantage === -1) {
+                    status = "デュース";
+                } else if (tennisScore.advantage === 0) {
+                    status = "プレイヤー アドバンテージ";
+                } else if (tennisScore.advantage === 1) {
+                    status = "コンピューター アドバンテージ";
+                }
+            }
+            
+            // ゲーム状態による上書き
+            if (gameState === 'gameWon') {
+                status = `${tennisScore.winner === 0 ? 'プレイヤー' : 'コンピューター'} ゲーム勝利! (SPACE で次のゲーム)`;
+            } else if (gameState === 'matchWon') {
+                status = `${tennisScore.winner === 0 ? 'プレイヤー' : 'コンピューター'} マッチ勝利! (SPACE でリスタート)`;
+            } else if (gameState === 'serving') {
+                if (tennisScore.currentServer === 0) {
+                    status = `プレイヤーのサーブ - W/Sで位置調整、SPACEでサーブ`;
+                } else {
+                    status = `コンピューターのサーブ`;
+                }
+            } else if (gameState === 'playing') {
+                // プレイ中はデュース状態を優先して表示
+                if (!tennisScore.isDeuce) {
+                    status = `サーバー: ${tennisScore.currentServer === 0 ? 'プレイヤー' : 'コンピューター'}`;
+                }
+            }
+            
+            document.getElementById('status').textContent = status;
+        }
+        
+        function addPoint(playerIndex) {
+            if (tennisScore.isMatchWon) return;
+            
+            if (tennisScore.isDeuce) {
+                if (tennisScore.advantage === -1) {
+                    // デュースからアドバンテージへ
+                    tennisScore.advantage = playerIndex;
+                } else if (tennisScore.advantage === playerIndex) {
+                    // アドバンテージからゲーム勝利
+                    winGame(playerIndex);
+                    return;
+                } else {
+                    // 相手のアドバンテージから再びデュースへ
+                    tennisScore.advantage = -1;
+                }
+            } else {
+                // 通常のポイント進行 0 → 1 → 2 → 3 → ゲーム勝利
+                tennisScore.points[playerIndex]++;
+                
+                // ゲーム勝利判定
+                if (tennisScore.points[playerIndex] >= 4) {
+                    if (tennisScore.points[playerIndex] - tennisScore.points[1 - playerIndex] >= 2) {
+                        // 2ポイント差でゲーム勝利
+                        winGame(playerIndex);
+                        return;
+                    } else if (tennisScore.points[0] >= 3 && tennisScore.points[1] >= 3) {
+                        // 両方が3ポイント以上でデュース
+                        tennisScore.isDeuce = true;
+                    }
+                }
+            }
+            
+            updateScoreDisplay();
+        }
+        
+        function winGame(playerIndex) {
+            tennisScore.games[playerIndex]++;
+            tennisScore.winner = playerIndex;
+            
+            // マッチ勝利判定 - 3ゲーム先取で勝利
+            if (tennisScore.games[playerIndex] >= 3) {
+                tennisScore.isMatchWon = true;
+                gameState = 'matchWon';
+            } else {
+                gameState = 'gameWon';
+            }
+            
+            updateScoreDisplay();
+        }
+        
+        function startServing() {
+            gameState = 'serving';
+            prepareServe();
+            updateScoreDisplay();
+        }
+        
+        function prepareServe() {
+            // サーブ準備：ボールをサーバーの位置に配置
+            if (tennisScore.currentServer === 0) {
+                ball.x = player1.x + paddleWidth + 15;
+                ball.y = player1.y + paddleHeight / 2;
+            } else {
+                ball.x = player2.x - 15;
+                ball.y = player2.y + paddleHeight / 2;
+                // コンピューターは自動でサーブ
+                setTimeout(() => serveGame(), 1000);
+            }
+        }
+        
+        function serveGame() {
+            gameState = 'playing';
+            ball.hitCount = 0; // ラリーカウンターリセット
+            ball.scored = false; // ポイント済みフラグリセット
+            
+            // サーブの方向と速度を設定
+            if (tennisScore.currentServer === 0) {
+                ball.dx = 4;
+                ball.dy = (Math.random() - 0.5) * 3;
+            } else {
+                ball.dx = -4;
+                ball.dy = (Math.random() - 0.5) * 3;
+            }
+            
+            updateScoreDisplay();
+        }
+        
+        function nextGame() {
+            // サーバー交代
+            tennisScore.currentServer = 1 - tennisScore.currentServer;
+            
+            // ポイントリセット
+            tennisScore.points = [0, 0];
+            tennisScore.isDeuce = false;
+            tennisScore.advantage = -1;
+            
+            startServing();
+        }
+        
+        function resetMatch() {
+            tennisScore = {
+                games: [0, 0],
+                points: [0, 0],
+                isDeuce: false,
+                advantage: -1,
+                currentServer: 0,
+                isMatchWon: false,
+                winner: -1
+            };
+            gameState = 'waiting';
+            updateScoreDisplay();
+        }
+        
+        function resetBall() {
+            // 次のポイントのためのサーブ準備
+            startServing();
+        }
+        
+        function updateGame() {
+            // プレイヤー1（人間）の移動とスピード計算
+            player1.prevY = player1.y;
+            if (keys['w'] && player1.y > 0) {
+                player1.y -= paddleSpeed;
+            }
+            if (keys['s'] && player1.y < canvas.height - paddleHeight) {
+                player1.y += paddleSpeed;
+            }
+            player1.velocity = player1.y - player1.prevY;
+            
+            // サーブ準備中の処理
+            if (gameState === 'serving') {
+                if (tennisScore.currentServer === 0) {
+                    // プレイヤーのサーブ準備中：ボールも一緒に移動
+                    ball.y = player1.y + paddleHeight / 2;
+                } else {
+                    // コンピューターのサーブ準備中
+                    updateComputerPlayer();
+                    ball.y = player2.y + paddleHeight / 2;
+                }
+                return;
+            }
+            
+            if (gameState !== 'playing') return;
+            
+            // プレイヤー2（コンピューター）のAI
+            updateComputerPlayer();
+            
+            // ボールの移動
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+            
+            // 上下の壁との衝突
+            if (ball.y <= ball.size || ball.y >= canvas.height - ball.size) {
+                ball.dy = -ball.dy;
+            }
+            
+            // パドルとの衝突判定
+            // プレイヤー1のパドル
+            if (ball.x - ball.size <= player1.x + paddleWidth &&
+                ball.y >= player1.y &&
+                ball.y <= player1.y + paddleHeight &&
+                ball.dx < 0) {
+                ball.dx = -ball.dx;
+                ball.dx *= 1.02;
+                // パドルの動きをボールに反映
+                ball.dy += player1.velocity * 0.3;
+                ball.hitCount++; // ラリー回数増加
+            }
+            
+            // プレイヤー2のパドル
+            if (ball.x + ball.size >= player2.x &&
+                ball.y >= player2.y &&
+                ball.y <= player2.y + paddleHeight &&
+                ball.dx > 0) {
+                ball.dx = -ball.dx;
+                ball.dx *= 1.02;
+                // コンピューターパドルの動きをボールに反映
+                ball.dy += player2.velocity * 0.3;
+                ball.hitCount++; // ラリー回数増加
+            }
+            
+            // ポイント判定
+            if (!ball.scored) { // まだポイントが付いていない場合のみ
+                if (ball.x < 0) {
+                    ball.scored = true; // ポイント済みフラグを立てる
+                    addPoint(1); // コンピューターのポイント
+                    ball.hitCount = 0; // ラリーカウンターリセット
+                    if (gameState === 'playing') {
+                        setTimeout(() => resetBall(), 1000);
+                    }
+                } else if (ball.x > canvas.width) {
+                    ball.scored = true; // ポイント済みフラグを立てる
+                    addPoint(0); // プレイヤーのポイント
+                    ball.hitCount = 0; // ラリーカウンターリセット
+                    if (gameState === 'playing') {
+                        setTimeout(() => resetBall(), 1000);
+                    }
+                }
+            }
+        }
+        
+        function updateComputerPlayer() {
+            // 前回の位置を記録
+            player2.prevY = player2.y;
+            
+            // 反応遅延を処理
+            if (player2.reactionDelay > 0) {
+                player2.reactionDelay--;
+                return; // 遅延中は移動しない
+            }
+            
+            // ラリー回数に基づく難易度低下の計算
+            let rallyDifficulty = Math.max(0.3, player2.difficulty - (ball.hitCount * 0.08));
+            let fatigueMultiplier = Math.max(0.4, 1 - (ball.hitCount * 0.06));
+            
+            // ボールがコンピューター側に向かっている場合
+            if (ball.dx > 0) {
+                // ラリーが続くと反応が遅くなる
+                if (ball.hitCount > 3 && Math.random() < 0.15 + (ball.hitCount * 0.05)) {
+                    player2.reactionDelay = Math.floor(2 + ball.hitCount * 0.5);
+                    return;
+                }
+                
+                // ボールの予測位置を計算
+                let timeToReach = (player2.x - ball.x) / ball.dx;
+                let predictedY = ball.y + (ball.dy * timeToReach);
+                
+                // 壁での跳ね返りを考慮
+                let bounceCount = 0;
+                while (predictedY < 0 || predictedY > canvas.height) {
+                    bounceCount++;
+                    if (predictedY < 0) {
+                        predictedY = -predictedY;
+                    }
+                    if (predictedY > canvas.height) {
+                        predictedY = 2 * canvas.height - predictedY;
+                    }
+                    
+                    // 複数回跳ね返りがあると予測精度が落ちる
+                    if (bounceCount > 1 && ball.hitCount > 2) {
+                        let bounceError = (Math.random() - 0.5) * 40 * bounceCount;
+                        predictedY += bounceError;
+                    }
+                }
+                
+                player2.targetY = predictedY - paddleHeight / 2;
+                
+                // ラリーが続くと予測誤差が大きくなる
+                if (ball.hitCount > 2) {
+                    let predictionErrorRange = 20 + (ball.hitCount * 8);
+                    player2.predictionError = (Math.random() - 0.5) * predictionErrorRange * (1 - rallyDifficulty);
+                    player2.targetY += player2.predictionError;
+                }
+            } else {
+                // ボールが離れていく場合は中央に戻る（疲労で遅くなる）
+                player2.targetY = canvas.height / 2 - paddleHeight / 2;
+            }
+            
+            // 難易度とラリー疲労に基づいた移動速度
+            let baseSpeed = paddleSpeed * rallyDifficulty * fatigueMultiplier;
+            
+            // ラリーが続くとさらに遅くなる
+            if (ball.hitCount > 5) {
+                baseSpeed *= Math.max(0.3, 1 - ((ball.hitCount - 5) * 0.1));
+            }
+            
+            // 基本的なランダムエラー
+            let basicError = (Math.random() - 0.5) * 25 * (1 - rallyDifficulty);
+            let adjustedTargetY = player2.targetY + basicError;
+            
+            // 境界チェック
+            adjustedTargetY = Math.max(0, Math.min(canvas.height - paddleHeight, adjustedTargetY));
+            
+            // スムーズな移動
+            let diff = adjustedTargetY - player2.y;
+            if (Math.abs(diff) > baseSpeed) {
+                player2.y += diff > 0 ? baseSpeed : -baseSpeed;
+            } else {
+                player2.y = adjustedTargetY;
+            }
+            
+            // 境界チェック
+            player2.y = Math.max(0, Math.min(canvas.height - paddleHeight, player2.y));
+            
+            // 速度を計算
+            player2.velocity = player2.y - player2.prevY;
+        }
+        
+        function drawGame() {
+            // 画面クリア - グラデーション背景
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#0f3460');
+            gradient.addColorStop(1, '#16537e');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 中央線を描画 - 明るい青
+            ctx.strokeStyle = '#4ecdc4';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([15, 10]);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // パドルを描画 - カラフル
+            // プレイヤーパドル（左）- 赤系
+            const playerGradient = ctx.createLinearGradient(player1.x, player1.y, player1.x + paddleWidth, player1.y + paddleHeight);
+            playerGradient.addColorStop(0, '#ff6b6b');
+            playerGradient.addColorStop(1, '#ee5a52');
+            ctx.fillStyle = playerGradient;
+            ctx.fillRect(player1.x, player1.y, paddleWidth, paddleHeight);
+            
+            // コンピューターパドル（右）- 緑系
+            const computerGradient = ctx.createLinearGradient(player2.x, player2.y, player2.x + paddleWidth, player2.y + paddleHeight);
+            computerGradient.addColorStop(0, '#96ceb4');
+            computerGradient.addColorStop(1, '#74b9a0');
+            ctx.fillStyle = computerGradient;
+            ctx.fillRect(player2.x, player2.y, paddleWidth, paddleHeight);
+            
+            // ボールを描画 - 明るい黄色で光る効果
+            if (gameState === 'playing' || gameState === 'serving') {
+                // ボールの影効果
+                ctx.beginPath();
+                ctx.arc(ball.x + 2, ball.y + 2, ball.size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.fill();
+                
+                // メインボール
+                const ballGradient = ctx.createRadialGradient(ball.x - 2, ball.y - 2, 0, ball.x, ball.y, ball.size);
+                ballGradient.addColorStop(0, '#ffeb3b');
+                ballGradient.addColorStop(1, '#ffc107');
+                ctx.fillStyle = ballGradient;
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // ボールのハイライト
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(ball.x - 3, ball.y - 3, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // ゲーム開始前のメッセージ
+            if (gameState === 'waiting') {
+                ctx.font = '20px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#ffeb3b';
+                ctx.strokeStyle = '#ff6b6b';
+                ctx.lineWidth = 2;
+                ctx.strokeText('SPACE キーでゲーム開始', canvas.width / 2, canvas.height / 2 + 50);
+                ctx.fillText('SPACE キーでゲーム開始', canvas.width / 2, canvas.height / 2 + 50);
+            }
+            
+            // サーブ準備中のメッセージ
+            if (gameState === 'serving' && tennisScore.currentServer === 0) {
+                ctx.font = '16px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#4ecdc4';
+                ctx.strokeStyle = '#45b7d1';
+                ctx.lineWidth = 1;
+                ctx.strokeText('W/S で位置調整, SPACE でサーブ', canvas.width / 2, 30);
+                ctx.fillText('W/S で位置調整, SPACE でサーブ', canvas.width / 2, 30);
+            }
+        }
+        
+        // ゲームループ
+        function gameLoop() {
+            updateGame();
+            drawGame();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // 初期化
+        updateScoreDisplay();
+        gameLoop();
+    </script>
+</body>
+</html>
