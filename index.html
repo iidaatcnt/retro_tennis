@@ -109,6 +109,15 @@
         <div class="score-section">ポイント: プレイヤー <span id="points1">0</span> - <span id="points2">0</span> コンピューター</div>
         <div class="score-section" id="status"></div>
     </div>
+    
+    <div id="demoText" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+         background: rgba(255, 255, 255, 0.95); color: #333; padding: 20px; border-radius: 10px; 
+         font-size: 18px; font-weight: bold; text-align: center; z-index: 1000;
+         box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 2px solid #4ecdc4;">
+        🎮 デモプレイ中 🎮<br>
+        <span style="font-size: 14px; color: #666;">何かキーを押すとプレイできます</span>
+    </div>
+    
     <canvas id="gameCanvas" width="600" height="400"></canvas>
     <div id="controls">
         プレイヤー: W/S キー (サーブ時位置調整も可能)<br>
@@ -121,6 +130,14 @@
         
         // ゲーム状態
         let gameState = 'waiting'; // 'waiting', 'serving', 'playing', 'paused', 'gameWon', 'matchWon'
+        
+        // デモモード管理
+        let demoState = {
+            isDemo: false,
+            lastUserInput: Date.now(),
+            demoStartTime: 0,
+            demoActionTimer: 0
+        };
         
         // テニススコア
         let tennisScore = {
@@ -177,6 +194,13 @@
         document.addEventListener('keydown', (e) => {
             keys[e.key.toLowerCase()] = true;
             
+            // ユーザー入力があったらデモモードを停止
+            if (demoState.isDemo && (e.key === ' ' || e.key.toLowerCase() === 'w' || e.key.toLowerCase() === 's')) {
+                stopDemo();
+            }
+            
+            demoState.lastUserInput = Date.now();
+            
             if (e.key === ' ') {
                 if (gameState === 'waiting') {
                     startServing();
@@ -192,6 +216,7 @@
         
         document.addEventListener('keyup', (e) => {
             keys[e.key.toLowerCase()] = false;
+            demoState.lastUserInput = Date.now();
         });
         
         function getPointDisplay(points, isDeuce, advantage, playerIndex) {
@@ -559,11 +584,23 @@
             
             // パドルを描画 - カラフル
             // プレイヤーパドル（左）- 赤系
+            if (demoState.isDemo) {
+                ctx.shadowColor = '#00ffff';
+                ctx.shadowBlur = 15;
+            }
             const playerGradient = ctx.createLinearGradient(player1.x, player1.y, player1.x + paddleWidth, player1.y + paddleHeight);
-            playerGradient.addColorStop(0, '#ff6b6b');
-            playerGradient.addColorStop(1, '#ee5a52');
+            if (demoState.isDemo) {
+                playerGradient.addColorStop(0, '#00ffff');
+                playerGradient.addColorStop(1, '#0099cc');
+            } else {
+                playerGradient.addColorStop(0, '#ff6b6b');
+                playerGradient.addColorStop(1, '#ee5a52');
+            }
             ctx.fillStyle = playerGradient;
             ctx.fillRect(player1.x, player1.y, paddleWidth, paddleHeight);
+            if (demoState.isDemo) {
+                ctx.shadowBlur = 0;
+            }
             
             // コンピューターパドル（右）- 緑系
             const computerGradient = ctx.createLinearGradient(player2.x, player2.y, player2.x + paddleWidth, player2.y + paddleHeight);
@@ -619,8 +656,104 @@
             }
         }
         
+        // デモモード関連関数
+        function checkDemoMode() {
+            if (demoState.isDemo || gameState !== 'waiting') return;
+            
+            // 5秒間操作がなければデモモード開始
+            if (Date.now() - demoState.lastUserInput > 5000) {
+                startDemo();
+            }
+        }
+        
+        function startDemo() {
+            demoState.isDemo = true;
+            demoState.demoStartTime = Date.now();
+            demoState.demoActionTimer = 0;
+            
+            // デモ表示を表示
+            document.getElementById('demoText').style.display = 'block';
+            
+            // デモゲームを自動開始
+            setTimeout(() => {
+                if (demoState.isDemo) {
+                    startServing();
+                    setTimeout(() => {
+                        if (demoState.isDemo && gameState === 'serving') {
+                            serveGame();
+                        }
+                    }, 1500);
+                }
+            }, 500);
+        }
+        
+        function stopDemo() {
+            demoState.isDemo = false;
+            demoState.lastUserInput = Date.now();
+            
+            // デモ表示を非表示
+            document.getElementById('demoText').style.display = 'none';
+        }
+        
+        function updateDemoAI() {
+            demoState.demoActionTimer++;
+            
+            if (gameState === 'playing') {
+                // プレイヤー1（左パドル）のAI制御
+                const ballCenterY = ball.y;
+                const paddleCenterY = player1.y + paddleHeight / 2;
+                const targetY = ballCenterY - paddleHeight / 2;
+                
+                // スムーズな移動
+                const diff = targetY - player1.y;
+                if (Math.abs(diff) > 2) {
+                    if (diff > 0) {
+                        keys['s'] = true;
+                        keys['w'] = false;
+                    } else {
+                        keys['w'] = true;
+                        keys['s'] = false;
+                    }
+                } else {
+                    keys['w'] = false;
+                    keys['s'] = false;
+                }
+            } else {
+                keys['w'] = false;
+                keys['s'] = false;
+            }
+            
+            // デモが長時間続いたらリセット
+            if (demoState.demoActionTimer > 3000) { // 約50秒
+                if (gameState === 'matchWon' || gameState === 'gameWon') {
+                    resetMatch();
+                    setTimeout(() => {
+                        if (demoState.isDemo) {
+                            startServing();
+                            setTimeout(() => {
+                                if (demoState.isDemo && gameState === 'serving') {
+                                    serveGame();
+                                }
+                            }, 1500);
+                        }
+                    }, 1000);
+                    demoState.demoActionTimer = 0;
+                }
+            }
+        }
+        
         // ゲームループ
         function gameLoop() {
+            // デモモードチェック
+            if (!demoState.isDemo && gameState === 'waiting') {
+                checkDemoMode();
+            }
+            
+            // デモモード中のAI制御
+            if (demoState.isDemo) {
+                updateDemoAI();
+            }
+            
             updateGame();
             drawGame();
             requestAnimationFrame(gameLoop);
