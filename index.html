@@ -768,6 +768,21 @@
                     startServing();
                     demoState.waitingTimer = 0;
                 }
+            } else if (gameState === 'gameWon') {
+                // ゲーム勝利後、次のゲームに進むか、マッチ終了なら待機画面へ
+                if (demoState.waitingTimer > 180) { // 約3秒後
+                    // 3ゲーム先取でマッチ終了の可能性をチェック
+                    if (tennisScore.games[0] >= 3 || tennisScore.games[1] >= 3) {
+                        // マッチ終了なので、デモを終了して待機画面へ
+                        stopDemo();
+                        resetMatch();
+                        demoState.lastUserInput = Date.now();
+                    } else {
+                        // まだマッチが続くので次のゲームへ
+                        nextGame();
+                    }
+                    demoState.waitingTimer = 0;
+                }
             } else if (gameState === 'matchWon') {
                 // マッチ勝利後、3秒待って待機画面へ戻す
                 if (demoState.waitingTimer > 180) { // 約3秒後
