@@ -1,0 +1,116 @@
+/* レトロテニス - スタイルシート */
+
+body {
+    margin: 0;
+    padding: 20px;
+    background: linear-gradient(135deg, #1e3c72, #2a5298);
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+}
+
+#gameTitle {
+    font-size: 24px;
+    margin-bottom: 10px;
+    text-align: center;
+    color: #ffeb3b;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4);
+    background-size: 400% 400%;
+    animation: rainbow 3s ease infinite;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+@keyframes rainbow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+#scoreBoard {
+    font-size: 16px;
+    margin-bottom: 20px;
+    text-align: center;
+    line-height: 1.5;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 15px;
+    border: 2px solid #4ecdc4;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+
+.score-section {
+    margin: 5px 0;
+    color: #e8f5e8;
+}
+
+#games1, #games2 {
+    color: #ff6b6b;
+    font-weight: bold;
+    font-size: 20px;
+}
+
+#points1, #points2 {
+    color: #4ecdc4;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+#status {
+    color: #ffeb3b !important;
+    font-weight: bold;
+    margin-top: 5px !important;
+}
+
+#gameCanvas {
+    border: 3px solid #ff6b6b;
+    background: linear-gradient(45deg, #0f3460, #16537e);
+    border-radius: 10px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+}
+
+#controls {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 14px;
+    color: #96ceb4;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: 1px solid #45b7d1;
+}
+
+.blink {
+    animation: colorBlink 1.5s infinite;
+}
+
+@keyframes colorBlink {
+    0%, 100% { color: #ffeb3b; }
+    25% { color: #ff6b6b; }
+    50% { color: #4ecdc4; }
+    75% { color: #45b7d1; }
+}
+
+/* デモテキストのスタイル */
+#demoText {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255, 255, 255, 0.95);
+    color: #333;
+    padding: 20px;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    z-index: 1000;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    border: 2px solid #4ecdc4;
+}
