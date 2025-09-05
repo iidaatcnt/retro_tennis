@@ -136,7 +136,9 @@
             isDemo: false,
             lastUserInput: Date.now(),
             demoStartTime: 0,
-            demoActionTimer: 0
+            demoActionTimer: 0,
+            waitingTimer: 0,  // 各状態での待機タイマー
+            lastState: ''      // 前回の状態を記録
         };
         
         // テニススコア
@@ -698,6 +700,13 @@
         function updateDemoAI() {
             demoState.demoActionTimer++;
             
+            // 状態が変わったらタイマーをリセット
+            if (gameState !== demoState.lastState) {
+                demoState.waitingTimer = 0;
+                demoState.lastState = gameState;
+            }
+            demoState.waitingTimer++;
+            
             if (gameState === 'playing') {
                 // プレイヤー1（左パドル）のAI制御
                 const ballCenterY = ball.y;
@@ -718,27 +727,31 @@
                     keys['w'] = false;
                     keys['s'] = false;
                 }
+            } else if (gameState === 'serving' && tennisScore.currentServer === 0) {
+                // デモモード中のプレイヤーサーブを自動化
+                if (demoState.waitingTimer > 60) { // 約1秒後にサーブ
+                    serveGame();
+                    demoState.waitingTimer = 0;
+                }
+            } else if (gameState === 'waiting') {
+                // デモモード中は自動でゲーム開始
+                if (demoState.waitingTimer > 120) { // 約2秒後にゲーム開始
+                    startServing();
+                    demoState.waitingTimer = 0;
+                }
+            } else if (gameState === 'matchWon') {
+                // マッチ勝利後、3秒待って待機画面へ戻す
+                if (demoState.waitingTimer > 180) { // 約3秒後
+                    // デモモードを終了して待機画面へ
+                    stopDemo();
+                    resetMatch();
+                    // 待機画面になったので、lastUserInputを更新して5秒後にまたデモが始まるようにする
+                    demoState.lastUserInput = Date.now();
+                    demoState.waitingTimer = 0;
+                }
             } else {
                 keys['w'] = false;
                 keys['s'] = false;
-            }
-            
-            // デモが長時間続いたらリセット
-            if (demoState.demoActionTimer > 3000) { // 約50秒
-                if (gameState === 'matchWon' || gameState === 'gameWon') {
-                    resetMatch();
-                    setTimeout(() => {
-                        if (demoState.isDemo) {
-                            startServing();
-                            setTimeout(() => {
-                                if (demoState.isDemo && gameState === 'serving') {
-                                    serveGame();
-                                }
-                            }, 1500);
-                        }
-                    }, 1000);
-                    demoState.demoActionTimer = 0;
-                }
             }
         }
         
