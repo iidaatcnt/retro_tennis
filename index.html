@@ -574,9 +574,56 @@
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // 中央線を描画 - 明るい青
+            // ゴールエリアのハイライト
+            // プレイヤー側（左）のゴールエリア - 赤色の半透明
+            ctx.fillStyle = 'rgba(255, 107, 107, 0.1)';
+            ctx.fillRect(0, 0, 40, canvas.height);
+            
+            // コンピューター側（右）のゴールエリア - 緑色の半透明
+            ctx.fillStyle = 'rgba(150, 206, 180, 0.1)';
+            ctx.fillRect(canvas.width - 40, 0, 40, canvas.height);
+            
+            // 左側ライン（プレイヤー側のゴールライン）- 赤色で実線
+            ctx.strokeStyle = '#ff6b6b';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(5, 0);
+            ctx.lineTo(5, canvas.height);
+            ctx.stroke();
+            
+            // 左側ラインの説明テキスト
+            ctx.save();
+            ctx.translate(15, canvas.height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillStyle = 'rgba(255, 107, 107, 0.5)';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('プレイヤー側ゴール', 0, 0);
+            ctx.restore();
+            
+            // 右側ライン（コンピューター側のゴールライン）- 緑色で実線
+            ctx.strokeStyle = '#96ceb4';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width - 5, 0);
+            ctx.lineTo(canvas.width - 5, canvas.height);
+            ctx.stroke();
+            
+            // 右側ラインの説明テキスト
+            ctx.save();
+            ctx.translate(canvas.width - 15, canvas.height / 2);
+            ctx.rotate(Math.PI / 2);
+            ctx.fillStyle = 'rgba(150, 206, 180, 0.5)';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('コンピューター側ゴール', 0, 0);
+            ctx.restore();
+            
+            // 中央線を描画 - 明るい青（点線）
             ctx.strokeStyle = '#4ecdc4';
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 2;
             ctx.setLineDash([15, 10]);
             ctx.beginPath();
             ctx.moveTo(canvas.width / 2, 0);
