@@ -121,7 +121,8 @@
     <canvas id="gameCanvas" width="600" height="400"></canvas>
     <div id="controls">
         プレイヤー: W/S キー (サーブ時位置調整も可能)<br>
-        <span class="blink">SPACE キーでスタート/サーブ</span>
+        <span class="blink">SPACE キーでスタート/サーブ</span><br>
+        M キーで音のON/OFF切り替え
     </div>
 
     <script>
@@ -193,8 +194,81 @@
         // キー入力管理
         const keys = {};
         
+        // サウンドシステム
+        let audioContext = null;
+        let isMuted = false;
+        
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+        
+        function playSound(type) {
+            if (isMuted || !audioContext) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            const currentTime = audioContext.currentTime;
+            
+            switch(type) {
+                case 'paddle':
+                    // パドルヒット音 - 高めのピッチ
+                    oscillator.type = 'square';
+                    oscillator.frequency.setValueAtTime(800, currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(400, currentTime + 0.1);
+                    gainNode.gain.setValueAtTime(0.3, currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.1);
+                    oscillator.start(currentTime);
+                    oscillator.stop(currentTime + 0.1);
+                    break;
+                    
+                case 'wall':
+                    // 壁バウンド音 - 低めのピッチ
+                    oscillator.type = 'triangle';
+                    oscillator.frequency.setValueAtTime(300, currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(200, currentTime + 0.05);
+                    gainNode.gain.setValueAtTime(0.2, currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.05);
+                    oscillator.start(currentTime);
+                    oscillator.stop(currentTime + 0.05);
+                    break;
+                    
+                case 'score':
+                    // 得点音 - 下降音
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(1000, currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(100, currentTime + 0.3);
+                    gainNode.gain.setValueAtTime(0.4, currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.3);
+                    oscillator.start(currentTime);
+                    oscillator.stop(currentTime + 0.3);
+                    break;
+                    
+                case 'serve':
+                    // サーブ音 - 上昇音
+                    oscillator.type = 'sawtooth';
+                    oscillator.frequency.setValueAtTime(200, currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(600, currentTime + 0.15);
+                    gainNode.gain.setValueAtTime(0.25, currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.15);
+                    oscillator.start(currentTime);
+                    oscillator.stop(currentTime + 0.15);
+                    break;
+            }
+        }
+        
         document.addEventListener('keydown', (e) => {
             keys[e.key.toLowerCase()] = true;
+            
+            // 最初のキー入力でオーディオを初期化
+            if (!audioContext) {
+                initAudio();
+            }
             
             // ユーザー入力があったらデモモードを停止
             if (demoState.isDemo && (e.key === ' ' || e.key.toLowerCase() === 'w' || e.key.toLowerCase() === 's')) {
@@ -213,6 +287,12 @@
                 } else if (gameState === 'matchWon') {
                     resetMatch();
                 }
+            }
+            
+            // ミュート切り替え
+            if (e.key.toLowerCase() === 'm') {
+                isMuted = !isMuted;
+                console.log(isMuted ? '音を無効にしました' : '音を有効にしました');
             }
         });
         
@@ -362,6 +442,9 @@
                 ball.dy = (Math.random() - 0.5) * 3;
             }
             
+            // サーブ音を再生
+            playSound('serve');
+            
             updateScoreDisplay();
         }
         
@@ -432,6 +515,7 @@
             // 上下の壁との衝突
             if (ball.y <= ball.size || ball.y >= canvas.height - ball.size) {
                 ball.dy = -ball.dy;
+                playSound('wall'); // 壁バウンド音を再生
             }
             
             // パドルとの衝突判定
@@ -445,6 +529,7 @@
                 // パドルの動きをボールに反映
                 ball.dy += player1.velocity * 0.3;
                 ball.hitCount++; // ラリー回数増加
+                playSound('paddle'); // パドルヒット音を再生
             }
             
             // プレイヤー2のパドル
@@ -457,12 +542,14 @@
                 // コンピューターパドルの動きをボールに反映
                 ball.dy += player2.velocity * 0.3;
                 ball.hitCount++; // ラリー回数増加
+                playSound('paddle'); // パドルヒット音を再生
             }
             
             // ポイント判定
             if (!ball.scored) { // まだポイントが付いていない場合のみ
                 if (ball.x < 0) {
                     ball.scored = true; // ポイント済みフラグを立てる
+                    playSound('score'); // 得点音を再生
                     addPoint(1); // コンピューターのポイント
                     ball.hitCount = 0; // ラリーカウンターリセット
                     if (gameState === 'playing') {
@@ -470,6 +557,7 @@
                     }
                 } else if (ball.x > canvas.width) {
                     ball.scored = true; // ポイント済みフラグを立てる
+                    playSound('score'); // 得点音を再生
                     addPoint(0); // プレイヤーのポイント
                     ball.hitCount = 0; // ラリーカウンターリセット
                     if (gameState === 'playing') {
